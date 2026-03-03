@@ -1,0 +1,122 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String?  @map("password_hash")
+  name         String
+  plan         String   @default("free")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  organizations OrganizationMember[]
+  refreshTokens RefreshToken[]
+
+  @@map("users")
+}
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  ownerId   String   @map("owner_id")
+  plan      String   @default("free")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  members     OrganizationMember[]
+  connections PlatformConnection[]
+
+  @@map("organizations")
+}
+
+model OrganizationMember {
+  id     String @id @default(uuid())
+  userId String @map("user_id")
+  orgId  String @map("org_id")
+  role   String @default("member") // owner | admin | member
+
+  user User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  org  Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, orgId])
+  @@map("organization_members")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  token     String   @unique
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+model PlatformConnection {
+  id              String    @id @default(uuid())
+  orgId           String    @map("org_id")
+  platform        String    // meta | google | tiktok | mercadolivre | amazon
+  accountId       String    @map("account_id")
+  accountName     String    @map("account_name")
+  accessTokenEnc  String    @map("access_token_enc")
+  refreshTokenEnc String?   @map("refresh_token_enc")
+  tokenExpiresAt  DateTime? @map("token_expires_at")
+  scopes          String[]
+  isActive        Boolean   @default(true) @map("is_active")
+  lastSyncAt      DateTime? @map("last_sync_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  org     Organization      @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  metrics CampaignMetric[]
+  campaigns Campaign[]
+
+  @@unique([orgId, platform, accountId])
+  @@map("platform_connections")
+}
+
+model Campaign {
+  id           String   @id @default(uuid())
+  connectionId String   @map("connection_id")
+  externalId   String   @map("external_id")
+  name         String
+  status       String   // active | paused | scheduled | completed
+  budgetTotal  Decimal? @map("budget_total") @db.Decimal(12, 2)
+  startDate    DateTime? @map("start_date")
+  endDate      DateTime? @map("end_date")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  connection PlatformConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  metrics    CampaignMetric[]
+
+  @@unique([connectionId, externalId])
+  @@map("campaigns")
+}
+
+model CampaignMetric {
+  id           String   @id @default(uuid())
+  connectionId String   @map("connection_id")
+  campaignId   String   @map("campaign_id")
+  date         DateTime @db.Date
+  impressions  BigInt   @default(0)
+  clicks       BigInt   @default(0)
+  conversions  Int      @default(0)
+  spend        Decimal  @default(0) @db.Decimal(12, 2)
+  revenue      Decimal  @default(0) @db.Decimal(12, 2)
+  syncedAt     DateTime @default(now()) @map("synced_at")
+
+  connection PlatformConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  campaign   Campaign           @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, date])
+  @@map("campaign_metrics")
+}
